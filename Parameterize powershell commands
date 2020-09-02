@@ -1,0 +1,39 @@
+resource "null_resource" "tags" {
+
+  triggers = {
+    "tagName" = ""
+    "rgName" = ""
+    "serviceName" = ""
+    "apiName" = "echo-api"
+  }
+  provisioner "local-exec" {
+    command = <<EOT
+      $TagName = "${self.triggers.tagName}"
+      $PropertiesObject = @{
+          displayName = "${self.triggers.tagName}"
+      }
+      New-AzResource -PropertyObject $PropertiesObject -ResourceGroupName "${self.triggers.rgName}" -ResourceType Microsoft.ApiManagement/service/tags -ResourceName "${self.triggers.serviceName}/$TagName" -ApiVersion 2018-01-01 -Force
+      New-AzResource -ResourceGroupName "${self.triggers.rgName}" -ResourceType Microsoft.ApiManagement/service/apis/tags -ResourceName "${self.triggers.serviceName}/${self.triggers.apiName}/$TagName" -ApiVersion 2018-01-01 -Force
+    EOT
+
+    interpreter = ["PowerShell", "-Command"]
+  }
+}
+
+resource "null_resource" "restapi" {
+
+  triggers = {
+    "rgName" = ""
+    "serviceName" = ""
+  }
+  provisioner "local-exec" {
+    command = <<EOT
+
+      $apimContext = New-AzApiManagementContext -ResourceGroupName "${self.triggers.rgName}" -ServiceName "${self.triggers.serviceName}"
+      Set-AzApiManagementTenantAccess -Context $apimContext -Enabled $True
+
+    EOT
+
+    interpreter = ["PowerShell", "-Command"]
+  }
+}
