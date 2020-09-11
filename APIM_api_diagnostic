@@ -1,16 +1,26 @@
+#variables.ft
+variable "api_names" {
+   type = "map"
+  default = {
+      "account1" = "exampleAPI"
+      "account2" = "exampleAPITwo"
+  }
+}
+
+//main.tf
 provider "azurerm" {
   features {}
-  
+  //version="2.27.0"
   subscription_id = ""
 }
 
 resource "azurerm_resource_group" "example" {
-  name        = "rg_test"
+  name        = "example"
   location    = "Central US"
 }
 
 resource "azurerm_api_management" "example" {
-  name                = "example"
+  name                = "example2"
   location            = azurerm_resource_group.example.location
   resource_group_name = azurerm_resource_group.example.name
   publisher_name      = "My Company"
@@ -25,6 +35,21 @@ resource "azurerm_api_management_api" "example" {
   revision            = "1"
   display_name        = "example API"
   path                = "example"
+  protocols           = ["https"]
+
+  import {
+    content_format = "swagger-link-json"
+    content_value  = "http://conferenceapi.azurewebsites.net/?format=json"
+  }
+}
+
+resource "azurerm_api_management_api" "exampleTwo" {
+  name                = "exampleAPITwo"
+  resource_group_name = azurerm_resource_group.example.name
+  api_management_name = azurerm_api_management.example.name
+  revision            = "1"
+  display_name        = "example API Two"
+  path                = "exampleTwo"
   protocols           = ["https"]
 
   import {
@@ -50,9 +75,83 @@ resource "azurerm_api_management_logger" "example" {
   }
 }
 
+resource "azurerm_eventhub_namespace" "example" {
+  name                = "acceptanceTestEventHubNamespaceTest"
+  location            = "Central US"
+  resource_group_name = azurerm_resource_group.example.name
+  sku                 = "Basic"
+  capacity            = 2
+
+  tags = {
+    environment = "Production"
+  }
+}
+
+resource "azurerm_eventhub" "example" {
+  name                = "acceptanceTestEventHub"
+  namespace_name      = azurerm_eventhub_namespace.example.name
+  resource_group_name = azurerm_resource_group.example.name
+  partition_count     = 2
+  message_retention   = 1
+}
+
+resource "azurerm_eventhub_namespace_authorization_rule" "example" {
+  name                = "navi"
+  namespace_name      = azurerm_eventhub_namespace.example.name
+  resource_group_name = azurerm_resource_group.example.name
+
+  listen = true
+  send   = true
+  manage = true
+}
+
+resource "azurerm_monitor_diagnostic_setting" "example" {
+  name               = "example"
+  target_resource_id = azurerm_api_management.example.id
+  eventhub_name      = azurerm_eventhub.example.name
+  eventhub_authorization_rule_id = azurerm_eventhub_namespace_authorization_rule.example.id
+
+  log {
+    category = "GatewayLogs"
+    enabled  = true
+    retention_policy {
+      enabled = false
+    }
+  }
+
+  metric {
+    category = "AllMetrics"
+    retention_policy {
+      enabled = false
+    }
+  }
+}
+
+resource "azurerm_api_management_api_diagnostic" "example_monitor_test" {
+  for_each = var.api_names
+  resource_group_name      = azurerm_resource_group.example.name
+  api_management_name      = azurerm_api_management.example.name
+  api_name                 = each.value
+  api_management_logger_id = azurerm_api_management_logger.example.id
+  identifier               = "applicationinsights"
+}
+
+resource "azurerm_api_management_logger" "example_azure_monitor" {
+  name                = "example-monitor-azure"
+  api_management_name = azurerm_api_management.example.name
+  resource_group_name = azurerm_resource_group.example.name
+
+  eventhub{
+    name = azurerm_eventhub.example.name
+    connection_string = azurerm_eventhub_namespace.example.default_primary_connection_string
+  }
+
+}
+
 resource "azurerm_api_management_api_diagnostic" "example" {
   resource_group_name      = azurerm_resource_group.example.name
   api_management_name      = azurerm_api_management.example.name
   api_name                 = azurerm_api_management_api.example.name
   api_management_logger_id = azurerm_api_management_logger.example.id
+  identifier               = "azuremonitor"
 }
